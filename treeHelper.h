@@ -19,20 +19,19 @@ class StringBuff {
         std::string & at(std::size_t row, std::size_t col) {
             return buff[row * width + col];
         }
-        friend std::ostream & operator<<(std::ostream &os, const StringBuff &sb);
+        friend std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
+            size_t buff_size = sb.height * sb.width;
+            for (std::size_t i = 0; i < buff_size; i += sb.width) {
+                for (std::size_t j = 0; j < sb.width; ++j) {
+                    os << sb.buff[i+j];
+                }
+                os << std::endl;
+            }
+            return os;
+        }
     private:
         std::vector<std::string> buff;
 };
-std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
-    size_t buff_size = sb.height * sb.width;
-    for (std::size_t i = 0; i < buff_size; i += sb.width) {
-        for (std::size_t j = 0; j < sb.width; ++j) {
-            os << sb.buff[i+j];
-        }
-        os << std::endl;
-    }
-    return os;
-}
 class BuffView {
     public:
         BuffView(StringBuff &buff, std::size_t base_row = 0, std::size_t base_col = 0):
@@ -200,7 +199,7 @@ class WrappedTree {
     };
 
     template<class LinkDrawer>
-    std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) {
+    std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) const {
         if (n == nullptr) return {0, Span(0, 0)};
         Wrap w = wrap_map.at(n);
         std::size_t self_width = w.display.size() + 2;
@@ -227,7 +226,7 @@ class WrappedTree {
             wrap(n, nullptr);
         }
         template<class LinkDrawer = SimpleLineDrawer<1>>
-        StringBuff draw() {
+        StringBuff draw() const {
             const Wrap &wroot = wrap_map.at(root);
             StringBuff sb(LinkDrawer::calc_height(wroot.height), wroot.width);
             draw<LinkDrawer>(root, sb);
@@ -235,5 +234,8 @@ class WrappedTree {
         }
         void color_node(const Node* n, std::string color) {
             wrap_map.at(n).color = color;
+        }
+        friend std::ostream & operator<<(std::ostream &os, const WrappedTree<Node> &wt) {
+            return os << wt.draw();
         }
 };
