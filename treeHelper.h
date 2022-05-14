@@ -61,7 +61,7 @@ class SimpleLineDrawer {
     public:
         static const std::size_t row_inc = 1 + h;
         static std::size_t calc_height(std::size_t nodes) {
-            return nodes + row_inc * (nodes - 1);
+            return nodes + (row_inc - 1) * (nodes - 1);
         }
         static void draw(BuffView bv,
                           Span lroot,
