@@ -23,7 +23,7 @@ Node* insert(Node* &n, int value) {
     }
 }
 
-Node* rand_gen(size_t range = 16, size_t min = 0) {
+Node* rand_gen(size_t min = 0, size_t range = 16) {
     srand(time(nullptr));
     size_t size = min + (rand() % range);
     Node* root = nullptr;
