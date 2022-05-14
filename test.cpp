@@ -5,7 +5,8 @@ using namespace std;
 
 int main() {
     auto root = rand_gen(1, 16);
-    TreeHelper<Node> th(root);
-    cout << th.draw() << endl;
+    WrappedTree<Node> wt(root);
+    wt.color_node(root, GREEN);
+    cout << wt.draw() << endl;
     destroy(root);
 }

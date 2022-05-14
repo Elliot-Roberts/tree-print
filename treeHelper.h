@@ -12,19 +12,19 @@ const std::string BLUE = "\033[34m";
 const std::string RESET = "\033[0m";
 class StringBuff {
     public:
-        StringBuff(std::size_t width, std::size_t height, std::string fill = " "): 
-            width(width), height(height), buff(width*height, fill) {}
+        const std::size_t height;
+        const std::size_t width;
+        StringBuff(std::size_t height, std::size_t width, std::string fill = " "): 
+            height(height), width(width), buff(height*width, fill) {}
         std::string & at(std::size_t row, std::size_t col) {
             return buff[row * width + col];
         }
         friend std::ostream & operator<<(std::ostream &os, const StringBuff &sb);
     private:
-        std::size_t width;
-        std::size_t height;
         std::vector<std::string> buff;
 };
 std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
-    size_t buff_size = sb.width * sb.height;
+    size_t buff_size = sb.height * sb.width;
     for (std::size_t i = 0; i < buff_size; i += sb.width) {
         for (std::size_t j = 0; j < sb.width; ++j) {
             os << sb.buff[i+j];
@@ -137,111 +137,103 @@ class SquigleLineDrawer {
 };
 
 template<typename Node>
-class TreeHelper {
+class WrappedTree {
     using Data = decltype(Node::data);
-    class WrappedTree {
-        struct Wrap {
-            const Node* n;
-            const Node* parent;
-            const Node* left;
-            const Node* right;
+    struct Wrap {
+        const Node* n;
+        const Node* parent;
+        const Node* left;
+        const Node* right;
 
-            std::string display;
-            std::string color;
-            std::size_t width;
-            std::size_t height;
-            
-            Wrap() = delete;
+        std::string display;
+        std::string color;
+        std::size_t width;
+        std::size_t height;
+        
+        Wrap() = delete;
 
-            Wrap(
-            const Node* n,
-            const Node* parent,
-            const Node* left,
-            const Node* right,
-            std::string display,
-            std::string color,
-            std::size_t width,
-            std::size_t height
-            ):
-            n(n),
-            parent(parent),
-            left(left),
-            right(right),
-            display(display),
-            color(color),
-            width(width),
-            height(height)
-            {}
-        };
-        std::unordered_map<const Node*, Wrap> wrap_map;
-        const Node* root;
-        void wrap(const Node* n, const Node* parent) {
-            if (n == nullptr) return;
-            wrap(n->left, n);
-            wrap(n->right, n);
-            const Wrap &lw = wrap_map.at(n->left);
-            const Wrap &rw = wrap_map.at(n->right);
-
-            std::stringstream ss;
-            ss << n->data;
-            std::string display = ss.str();
-            std::size_t self_width = display.size() + 2;
-            std::size_t width = self_width + lw.width + rw.width;
-            std::size_t height = 1 + std::max(lw.height, rw.height);
-            wrap_map.emplace(n, Wrap(
-                n, 
-                parent,
-                n->left,
-                n->right,
-                display,
-                "",
-                width,
-                height
-            ));
-        };
-
-        template<class LinkDrawer>
-        std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) {
-            if (n == nullptr) return {0, Span(0, 0)};
-            Wrap w = wrap_map.at(n);
-            std::size_t self_width = w.display.size() + 2;
-
-            auto [lwidth, lroot] = draw<LinkDrawer>(w.left, bv.offset(LinkDrawer::row_inc, 0));
-            std::size_t rstart = lwidth + self_width;
-            auto [rwidth, rroot] = draw<LinkDrawer>(w.right, bv.offset(LinkDrawer::row_inc, rstart));
-
-            rroot.offset += rstart;
-            Span self_span(lwidth, self_width);
-            LinkDrawer::draw(bv, lroot, self_span, rroot);
-
-            bv.at(0, lwidth) = "[" + w.color;
-            for (std::size_t i = 0; i < w.display.size(); ++i) {
-                bv.at(0, lwidth+1+i) = w.display[i];
-            }
-            bv.at(0, lwidth+1+w.display.size()) = RESET + "]";
-
-            return {lwidth + self_width + rwidth, self_span};
-        }
-        public:
-            WrappedTree(const Node* n): root(n) {
-                wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, "", "", 0, 0));
-                wrap(n, nullptr);
-            }
-            template<class LinkDrawer>
-            StringBuff draw() {
-                const Wrap &wroot = wrap_map.at(root);
-                StringBuff sb(wroot.width, LinkDrawer::calc_height(wroot.height));
-                draw<LinkDrawer>(root, sb);
-                return sb;
-            }
+        Wrap(
+        const Node* n,
+        const Node* parent,
+        const Node* left,
+        const Node* right,
+        std::string display,
+        std::string color,
+        std::size_t width,
+        std::size_t height
+        ):
+        n(n),
+        parent(parent),
+        left(left),
+        right(right),
+        display(display),
+        color(color),
+        width(width),
+        height(height)
+        {}
     };
+    std::unordered_map<const Node*, Wrap> wrap_map;
+    const Node* root;
+    void wrap(const Node* n, const Node* parent) {
+        if (n == nullptr) return;
+        wrap(n->left, n);
+        wrap(n->right, n);
+        const Wrap &lw = wrap_map.at(n->left);
+        const Wrap &rw = wrap_map.at(n->right);
+
+        std::stringstream ss;
+        ss << n->data;
+        std::string display = ss.str();
+        std::size_t self_width = display.size() + 2;
+        std::size_t width = self_width + lw.width + rw.width;
+        std::size_t height = 1 + std::max(lw.height, rw.height);
+        wrap_map.emplace(n, Wrap(
+            n, 
+            parent,
+            n->left,
+            n->right,
+            display,
+            "",
+            width,
+            height
+        ));
+    };
+
+    template<class LinkDrawer>
+    std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) {
+        if (n == nullptr) return {0, Span(0, 0)};
+        Wrap w = wrap_map.at(n);
+        std::size_t self_width = w.display.size() + 2;
+
+        auto [lwidth, lroot] = draw<LinkDrawer>(w.left, bv.offset(LinkDrawer::row_inc, 0));
+        std::size_t rstart = lwidth + self_width;
+        auto [rwidth, rroot] = draw<LinkDrawer>(w.right, bv.offset(LinkDrawer::row_inc, rstart));
+
+        rroot.offset += rstart;
+        Span self_span(lwidth, self_width);
+        LinkDrawer::draw(bv, lroot, self_span, rroot);
+
+        bv.at(0, lwidth) = "[" + w.color;
+        for (std::size_t i = 0; i < w.display.size(); ++i) {
+            bv.at(0, lwidth+1+i) = w.display[i];
+        }
+        bv.at(0, lwidth+1+w.display.size()) = RESET + "]";
+
+        return {lwidth + self_width + rwidth, self_span};
+    }
     public:
-        TreeHelper(const Node* root): root(root), current_wrap(root) {}
+        WrappedTree(const Node* n): root(n) {
+            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, "", "", 0, 0));
+            wrap(n, nullptr);
+        }
         template<class LinkDrawer = SimpleLineDrawer<1>>
         StringBuff draw() {
-            return current_wrap.draw<LinkDrawer>();
+            const Wrap &wroot = wrap_map.at(root);
+            StringBuff sb(LinkDrawer::calc_height(wroot.height), wroot.width);
+            draw<LinkDrawer>(root, sb);
+            return sb;
         }
-    private:
-        const Node* root;
-        WrappedTree current_wrap;
+        void color_node(const Node* n, std::string color) {
+            wrap_map.at(n).color = color;
+        }
 };
