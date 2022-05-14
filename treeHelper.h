@@ -23,6 +23,16 @@ class StringBuff {
         std::size_t height;
         std::vector<std::string> buff;
 };
+std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
+    size_t buff_size = sb.width * sb.height;
+    for (std::size_t i = 0; i < buff_size; i += sb.width) {
+        for (std::size_t j = 0; j < sb.width; ++j) {
+            os << sb.buff[i+j];
+        }
+        os << std::endl;
+    }
+    return os;
+}
 class BuffView {
     public:
         BuffView(StringBuff &buff, std::size_t base_row = 0, std::size_t base_col = 0):
@@ -38,21 +48,15 @@ class BuffView {
         std::size_t base_row;
         std::size_t base_col;
 };
-std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
-    size_t buff_size = sb.width * sb.height;
-    for (std::size_t i = 0; i < buff_size; i += sb.width) {
-        for (std::size_t j = 0; j < sb.width; ++j) {
-            os << sb.buff[i+j];
-        }
-        os << std::endl;
-    }
-    return os;
-}
+struct Span {
+    std::size_t offset;
+    std::size_t size;
+    Span(std::size_t offset, std::size_t size): offset(offset), size(size) {}
+};
 // class LinkDrawer {
 //     public:
 //         const std::size_t vertical_space = 1;
-//         virtual void draw(StringBuff &sb,
-//                           std::pair<std::size_t, std::size_t> offset,
+//         virtual void draw(BuffView bv,
 //                           std::size_t lwidth,
 //                           std::size_t lroot,
 //                           std::size_t midwidth,
@@ -61,6 +65,7 @@ std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
 // 
 //         }
 // };
+
 template<typename Node>
 class TreeHelper {
     using Data = decltype(Node::data);
@@ -125,12 +130,12 @@ class TreeHelper {
             ));
         };
 
-        std::pair<std::size_t, std::size_t> draw(const Node* n, BuffView bv) {
-            if (n == nullptr) return {0, 0};
+        std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) {
+            if (n == nullptr) return {0, Span(0, 0)};
             Wrap w = wrap_map.at(n);
-            auto [lwidth, lroot] = draw(w.left, bv.offset(2, 0));
+            auto [lwidth, lroot_span] = draw(w.left, bv.offset(2, 0));
             if (lwidth) {
-                lroot = (lroot + 1) / 2 - lroot%2;
+                std::size_t lroot = lroot_span.offset + ((lroot_span.size + 1) / 2 - lroot_span.size%2);
                 bv.at(0, lroot) = "╭";
                 bv.at(1, lroot) = "│";
                 for (std::size_t i = lroot + 1; i < lwidth; ++i) {
@@ -142,17 +147,18 @@ class TreeHelper {
                 bv.at(0, lwidth+1+i) = w.display[i];
             }
             bv.at(0, lwidth+1+w.display.size()) = RESET + "]";
-            std::size_t rstart = lwidth+2+w.display.size();
-            auto [rwidth, rroot] = draw(w.right, bv.offset(2, rstart));
+            std::size_t self_width = w.display.size() + 2;
+            std::size_t rstart = lwidth + self_width;
+            auto [rwidth, rroot_span] = draw(w.right, bv.offset(2, rstart));
             if (rwidth) {
-                rroot = rroot / 2 - 1 + rroot%2;
+                std::size_t rroot = rroot_span.offset + (rroot_span.size / 2 - 1 + rroot_span.size%2);
                 bv.at(0, rstart + rroot) = "╮";
                 bv.at(1, rstart + rroot) = "│";
                 for (std::size_t i = rstart; i < rstart + rroot; ++i) {
                     bv.at(0, i) = "─";
                 }
             }
-            return {lwidth+2+w.display.size()+rwidth, lwidth + lwidth + 2 + w.display.size()};
+            return {lwidth + self_width + rwidth, Span(lwidth, self_width)};
         }
 
         std::pair<std::size_t, std::size_t> draw2(const Node* n,
