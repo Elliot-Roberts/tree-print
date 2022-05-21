@@ -10,6 +10,10 @@ const std::string RED = "\033[31m";
 const std::string GREEN = "\033[32m";
 const std::string BLUE = "\033[34m";
 const std::string RESET = "\033[0m";
+
+const std::string DELETE_COLOR = RED;
+const std::string ADD_COLOR = GREEN;
+
 class StringBuff {
     public:
         const std::size_t height;
@@ -234,6 +238,27 @@ class WrappedTree {
         }
         void color_node(const Node* n, std::string color) {
             wrap_map.at(n).color = color;
+        }
+        std::pair<WrappedTree, WrappedTree> compare_to(const WrappedTree &other) const {
+            WrappedTree oldt(*this);
+            WrappedTree newt(other);
+            for (auto & p : oldt.wrap_map) {
+                const Node* n = p.first;
+                Wrap &wr = p.second;
+                const auto found = newt.wrap_map.find(n);
+                if (found == other.wrap_map.end()) {
+                    wr.color = DELETE_COLOR;
+                }
+            }
+            for (auto & p : newt.wrap_map) {
+                const Node* n = p.first;
+                Wrap &wr = p.second;
+                const auto found = oldt.wrap_map.find(n);
+                if (found == other.wrap_map.end()) {
+                    wr.color = ADD_COLOR;
+                }
+            }
+            return {oldt, newt};
         }
         friend std::ostream & operator<<(std::ostream &os, const WrappedTree<Node> &wt) {
             return os << wt.draw();

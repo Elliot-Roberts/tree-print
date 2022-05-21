@@ -6,10 +6,13 @@ using namespace std;
 int main() {
     auto root = rand_gen(10, 7);
     WrappedTree<Node> wt(root);
-    wt.color_node(root, GREEN);
-    cout << wt
-         << endl;
+    // wt.color_node(root, GREEN);
+    // cout << wt
+    //      << endl;
     balance(root);
-    cout << WrappedTree(root);
+    insert(root, 200);
+    auto [oldt, newt] = wt.compare_to(WrappedTree(root));
+    cout << oldt << endl
+         << newt;
     destroy(root);
 }
