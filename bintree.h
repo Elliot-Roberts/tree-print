@@ -11,16 +11,14 @@ struct Node {
         data(data), left(left), right(right) {}
 };
 
+Node* & find(Node* &n, int x) {
+    if (n == nullptr) return n;
+    if (x < n->data) return find(n->left, x);
+    else return find(n->right, x);
+}
+
 Node* insert(Node* &n, int value) {
-    if (n == nullptr) {
-        n = new Node(value);
-        return n;
-    }
-    if (value < n->data) {
-        return insert(n->left, value);
-    } else {
-        return insert(n->right, value);
-    }
+    return find(n, value) = new Node(value);
 }
 
 Node* rand_gen(size_t min = 0, size_t range = 16) {
@@ -61,6 +59,32 @@ void balance(Node* &n) {
     to_array(n, const_cast<const Node**>(arr));
     n = balanced_from_array(arr, nsize);
     delete arr;
+}
+
+// min and max assume n is not null
+Node* & min(Node* &n) {
+    if (n->left == nullptr) return n;
+    return min(n->left);
+}
+Node* & max(Node* &n) {
+    if (n->right == nullptr) return n;
+    return max(n->right);
+}
+
+void remove_node(Node* &n) {
+    Node * temp = n;
+    if (n->left == nullptr) {
+        n = n->right;
+    } else if (n->right == nullptr) {
+        n = n->left;
+    } else {
+        Node* &pred = max(n->left);
+        n = pred;
+        pred = pred->left;
+        n->left = temp->left;
+        n->right = temp->right;
+    }
+    delete temp;
 }
 
 void destroy(Node* n) {
