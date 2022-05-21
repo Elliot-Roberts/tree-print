@@ -23,6 +23,16 @@ class StringBuff {
         std::string & at(std::size_t row, std::size_t col) {
             return buff[row * width + col];
         }
+        const std::string & at(std::size_t row, std::size_t col) const {
+            return buff[row * width + col];
+        }
+        void paste(const StringBuff &other, std::size_t row = 0, std::size_t col = 0) {
+            for (std::size_t r = 0; r < other.height; ++r) {
+                for (std::size_t c = 0; c < other.width; ++c) {
+                    this->at(row + r, col + c) = other.at(r, c);
+                }
+            }
+        }
         friend std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
             size_t buff_size = sb.height * sb.width;
             for (std::size_t i = 0; i < buff_size; i += sb.width) {
@@ -36,6 +46,17 @@ class StringBuff {
     private:
         std::vector<std::string> buff;
 };
+StringBuff horizontal_concat(const StringBuff &left,
+                             const StringBuff &right,
+                             std::size_t spacing = 0,
+                             std::string fill = " ") {
+    std::size_t height = std::max(left.height, right.height);
+    std::size_t width = left.width + spacing + right.width;
+    StringBuff dest(height, width, fill);
+    dest.paste(left);
+    dest.paste(right, 0, left.width + spacing);
+    return dest;
+}
 class BuffView {
     public:
         BuffView(StringBuff &buff, std::size_t base_row = 0, std::size_t base_col = 0):

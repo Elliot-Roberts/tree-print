@@ -12,7 +12,7 @@ int main() {
     balance(root);
     insert(root, 200);
     auto [oldt, newt] = wt.compare_to(WrappedTree(root));
-    cout << oldt << endl
-         << newt;
+    cout << oldt << newt;
+    cout << horizontal_concat(oldt.draw(), newt.draw());
     destroy(root);
 }
