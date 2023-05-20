@@ -13,6 +13,7 @@ const std::string RESET = "\033[0m";
 
 const std::string DELETE_COLOR = RED;
 const std::string ADD_COLOR = GREEN;
+const std::string CHANGE_COLOR = BLUE;
 
 class StringBuff {
     public:
@@ -90,26 +91,31 @@ class SimpleLineDrawer {
         static void draw(BuffView bv,
                           Span lroot,
                           Span root,
-                          Span rroot) {
+                          Span rroot,
+                          std::string lcolor = "",
+                          std::string rcolor = "") {
             if (lroot.size) {
                 auto lroot_mid = lroot.offset + ((lroot.size + 1) / 2 - lroot.size%2);
-                bv.at(0, lroot_mid) = "╭";
+                bv.at(0, lroot_mid) = lcolor + "╭";
                 for (std::size_t i = 1; i <= h; ++i) {
-                    bv.at(i, lroot_mid) = "│";
+                    bv.at(i, lroot_mid) = lcolor + "│" + RESET;
                 }
                 for (auto i = lroot_mid + 1; i < root.offset; ++i) {
                     bv.at(0, i) = "─";
                 }
+                bv.at(0, root.offset - 1) += RESET;
             }
             if (rroot.size) {
                 auto rroot_mid = rroot.offset + (rroot.size / 2 - 1 + rroot.size%2);
-                bv.at(0, rroot_mid) = "╮";
+                bv.at(0, rroot_mid) = "╮" + RESET;
                 for (std::size_t i = 1; i <= h; ++i) {
-                    bv.at(i, rroot_mid) = "│";
+                    bv.at(i, rroot_mid) = rcolor + "│" + RESET;
                 }
                 for (auto i = root.end(); i < rroot_mid; ++i) {
                     bv.at(0, i) = "─";
                 }
+                auto &s = bv.at(0, root.end());
+                s = rcolor + s;
             }
         }
 };
@@ -124,7 +130,9 @@ class SquigleLineDrawer {
         static void draw(BuffView bv,
                           Span lroot,
                           Span root,
-                          Span rroot) {
+                          Span rroot,
+                          std::string _lcolor = "",
+                          std::string _rcolor = "") {
             if (lroot.size) {
                 auto lroot_mid = lroot.offset + ((lroot.size + 1) / 2 - lroot.size%2);
                 auto mid_left = root.offset;
@@ -171,6 +179,8 @@ class WrappedTree {
 
         std::string display;
         std::string color;
+        std::string lcolor;
+        std::string rcolor;
         std::size_t width;
         std::size_t height;
         
@@ -183,6 +193,8 @@ class WrappedTree {
         const Node* right,
         std::string display,
         std::string color,
+        std::string lcolor,
+        std::string rcolor,
         std::size_t width,
         std::size_t height
         ):
@@ -192,6 +204,8 @@ class WrappedTree {
         right(right),
         display(display),
         color(color),
+        lcolor(lcolor),
+        rcolor(rcolor),
         width(width),
         height(height)
         {}
@@ -218,6 +232,8 @@ class WrappedTree {
             n->right,
             display,
             "",
+            "",
+            "",
             width,
             height
         ));
@@ -235,19 +251,19 @@ class WrappedTree {
 
         rroot.offset += rstart;
         Span self_span(lwidth, self_width);
-        LinkDrawer::draw(bv, lroot, self_span, rroot);
+        LinkDrawer::draw(bv, lroot, self_span, rroot, w.lcolor, w.rcolor);
 
-        bv.at(0, lwidth) = "[" + w.color;
+        bv.at(0, lwidth) = w.lcolor + "[" + RESET + w.color;
         for (std::size_t i = 0; i < w.display.size(); ++i) {
             bv.at(0, lwidth+1+i) = w.display[i];
         }
-        bv.at(0, lwidth+1+w.display.size()) = RESET + "]";
+        bv.at(0, lwidth+1+w.display.size()) = RESET + w.rcolor + "]" + RESET;
 
         return {lwidth + self_width + rwidth, self_span};
     }
     public:
         WrappedTree(const Node* n): root(n) {
-            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, "", "", 0, 0));
+            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, "", "", "", "", 0, 0));
             wrap(n, nullptr);
         }
         template<class LinkDrawer = SimpleLineDrawer<1>>
@@ -267,16 +283,26 @@ class WrappedTree {
                 const Node* n = p.first;
                 Wrap &wr = p.second;
                 const auto found = newt.wrap_map.find(n);
-                if (found == other.wrap_map.end()) {
+                if (found == newt.wrap_map.end()) {
                     wr.color = DELETE_COLOR;
+                    wr.lcolor = DELETE_COLOR;
+                    wr.rcolor = DELETE_COLOR;
                 }
             }
             for (auto & p : newt.wrap_map) {
                 const Node* n = p.first;
                 Wrap &wr = p.second;
                 const auto found = oldt.wrap_map.find(n);
-                if (found == other.wrap_map.end()) {
+                if (found == oldt.wrap_map.end()) {
                     wr.color = ADD_COLOR;
+                } else {
+                    const auto & oldwr = found->second;
+                    if (oldwr.left != wr.left) {
+                        wr.lcolor = CHANGE_COLOR;
+                    }
+                    if (oldwr.right != wr.right) {
+                        wr.rcolor = CHANGE_COLOR;
+                    }
                 }
             }
             return {oldt, newt};

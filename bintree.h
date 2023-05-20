@@ -11,14 +11,21 @@ struct Node {
         data(data), left(left), right(right) {}
 };
 
+Node* & place(Node* &n, int x) {
+    if (n == nullptr) return n;
+    if (x < n->data) return place(n->left, x);
+    else return place(n->right, x);
+}
+
 Node* & find(Node* &n, int x) {
     if (n == nullptr) return n;
+    if (x == n->data) return n;
     if (x < n->data) return find(n->left, x);
     else return find(n->right, x);
 }
 
 Node* insert(Node* &n, int value) {
-    return find(n, value) = new Node(value);
+    return place(n, value) = new Node(value);
 }
 
 Node* rand_gen(size_t min = 0, size_t range = 16) {
