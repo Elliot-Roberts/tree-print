@@ -495,8 +495,6 @@ class WrappedTree {
             }
             base_horiz_row += 1;
         }
-        std::cout << "nodes = " << full_height - loops.size() << std::endl;
-        std::cout << "loops = " << prev_min << std::endl;
         return std::max(full_height - loops.size() - 1, prev_min + 1);
     }
 
