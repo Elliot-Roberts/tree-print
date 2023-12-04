@@ -1,6 +1,6 @@
 #pragma once
 #include<cstdlib>
-#include<ctime>
+#include<chrono>
 #include<utility>
 
 struct Node {
@@ -29,7 +29,7 @@ Node* insert(Node* &n, int value) {
 }
 
 Node* rand_gen(size_t min = 0, size_t range = 16) {
-    srand(time(nullptr));
+    srand(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     size_t size = min + (rand() % range);
     Node* root = nullptr;
     for (size_t i = 0; i < size; ++i) {
