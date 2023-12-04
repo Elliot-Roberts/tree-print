@@ -9,17 +9,78 @@
 #include<utility>
 #include<iostream>
 #include<optional>
+#include<array>
 /// Terminal color escape codes
-const std::string RED = "\033[31m";
-const std::string GREEN = "\033[32m";
-const std::string BLUE = "\033[34m";
-const std::string GREY = "\033[90m";
-const std::string RESET = "\033[0m";
+enum ForegroundColor: char {
+    DEFAULT = 0,
+    RED,
+    GREEN,
+    BLUE,
+    GREY
+};
 
-const std::string DELETE_COLOR = GREY;
-const std::string ADD_COLOR = GREEN;
-const std::string CHANGE_COLOR = BLUE;
-const std::string LOOP_COLOR = RED;
+std::ostream & operator<<(std::ostream & os, ForegroundColor c) {
+    switch (c) {
+        case DEFAULT: os << "\033[0m"; break;
+        case RED: os << "\033[31m"; break;
+        case GREEN: os << "\033[32m"; break;
+        case BLUE: os << "\033[34m"; break;
+        case GREY: os << "\033[90m"; break;
+        // default: os.setstate(std::ios_base::failbit);
+    };
+    return os;
+}
+
+const ForegroundColor DELETE_COLOR = GREY;
+const ForegroundColor ADD_COLOR = GREEN;
+const ForegroundColor CHANGE_COLOR = BLUE;
+const ForegroundColor LOOP_COLOR = RED;
+
+template<std::size_t WIDTH>
+struct TinyStr {
+    std::array<char, WIDTH> chars;
+
+    TinyStr(): chars{'\0'} {}
+
+    TinyStr(char c): chars{'\0'} {
+        static_assert(WIDTH >= 1);
+        chars[0] = c;
+    }
+
+    template<std::size_t N>
+    TinyStr(const char (&s)[N]): chars{'\0'} {
+        static_assert(N <= (WIDTH+1));
+        for (std::size_t i = 0; i < (N-1); ++i) {
+            chars[i] = s[i];
+        }
+    }
+
+    template<std::size_t N>
+    bool operator==(const char (&s)[N]) {
+        static_assert(N <= (WIDTH+1));
+        bool matches = true;
+        for (std::size_t i = 0; i < (N-1); ++i) {
+            matches = matches && (chars[i] == s[i]);
+        }
+        return matches;
+    }
+
+    friend std::ostream & operator<<(std::ostream & os, const TinyStr mt) {
+        for (std::size_t i = 0; i < WIDTH; ++i) {
+            if (mt.chars[i] != '\0') os << mt.chars[i];
+        }
+        return os;
+    }
+};
+
+struct TermCell {
+    ForegroundColor color;
+    TinyStr<3> c;
+    TermCell(): TermCell(DEFAULT, ' ') {}
+    TermCell(ForegroundColor color, char c): color(color), c(c) {}
+    template<std::size_t N>
+    TermCell(ForegroundColor color, const char (&c)[N]): color(color), c(c) {}
+};
 
 /**
  * String Buffer: a 2D array of "characters".
@@ -28,25 +89,25 @@ const std::string LOOP_COLOR = RED;
  * because they may have attached terminal escape sequences for color, and
  * may also be unicode symbols wider than one byte.
  */
-class StringBuff {
+class TermBuff {
     public:
         std::size_t height;
         const std::size_t width;
 
         /// New buffer filled with `fill`
-        StringBuff(std::size_t height, std::size_t width, std::string fill = " "): 
-            height(height), width(width), buff(height*width, fill) {}
+        TermBuff(std::size_t height, std::size_t width): 
+            height(height), width(width), buff(height*width, TermCell()) {}
 
         /// Get mutable reference to specific position in buffer
-        std::string & at(std::size_t row, std::size_t col) {
+        TermCell & at(std::size_t row, std::size_t col) {
             return buff[row * width + col];
         }
         /// Get immutable reference to specific position in buffer
-        const std::string & at(std::size_t row, std::size_t col) const {
+        const TermCell & at(std::size_t row, std::size_t col) const {
             return buff[row * width + col];
         }
         /// Overwrite section of buffer, starting at [row, col], with contents of other buffer
-        void paste(const StringBuff &other, std::size_t row = 0, std::size_t col = 0) {
+        void paste(const TermBuff &other, std::size_t row = 0, std::size_t col = 0) {
             for (std::size_t r = 0; r < other.height; ++r) {
                 for (std::size_t c = 0; c < other.width; ++c) {
                     this->at(row + r, col + c) = other.at(r, c);
@@ -54,31 +115,36 @@ class StringBuff {
             }
         }
         /// Display the rectangular buffer
-        friend std::ostream & operator<<(std::ostream &os, const StringBuff &sb) {
+        friend std::ostream & operator<<(std::ostream &os, const TermBuff &sb) {
             size_t buff_size = sb.height * sb.width;
             for (std::size_t i = 0; i < buff_size; i += sb.width) {
+                ForegroundColor color = DEFAULT;
                 for (std::size_t j = 0; j < sb.width; ++j) {
-                    os << sb.buff[i+j];
+                    const auto & x = sb.buff[i+j];
+                    if (color != x.color) {
+                        color = x.color;
+                        os << x.color;
+                    }
+                    os << x.c;
                 }
-                os << std::endl;
+                os << DEFAULT << std::endl;
             }
             return os;
         }
     private:
-        std::vector<std::string> buff;
+        std::vector<TermCell> buff;
 };
 
 /**
  * Create a new string buffer containing the contents of two other buffers
  * pasted next to eachother, with variable spacing between.
  */
-StringBuff horizontal_concat(const StringBuff &left,
-                             const StringBuff &right,
-                             std::size_t spacing = 0,
-                             std::string fill = " ") {
+TermBuff horizontal_concat(const TermBuff &left,
+                             const TermBuff &right,
+                             std::size_t spacing = 0) {
     std::size_t height = std::max(left.height, right.height);
     std::size_t width = left.width + spacing + right.width;
-    StringBuff dest(height, width, fill);
+    TermBuff dest(height, width);
     dest.paste(left);
     dest.paste(right, 0, left.width + spacing);
     return dest;
@@ -90,12 +156,12 @@ StringBuff horizontal_concat(const StringBuff &left,
  */
 class BuffView {
     public:
-        BuffView(StringBuff &buff, std::size_t base_row = 0, std::size_t base_col = 0):
+        BuffView(TermBuff &buff, std::size_t base_row = 0, std::size_t base_col = 0):
             buff(buff), base_row(base_row), base_col(base_col) {}
         BuffView offset(std::size_t rows, std::size_t cols) {
             return BuffView(buff, base_row + rows, base_col + cols);
         }
-        std::string & at(std::size_t row, std::size_t col) {
+        TermCell & at(std::size_t row, std::size_t col) {
             return buff.at(base_row + row, base_col + col);
         }
         std::size_t height() const {
@@ -105,7 +171,7 @@ class BuffView {
             return buff.width - base_col;
         }
     private:
-        StringBuff &buff;
+        TermBuff &buff;
         std::size_t base_row;
         std::size_t base_col;
 };
@@ -170,33 +236,29 @@ class SimpleLineDrawer {
                           Span lroot,
                           Span root,
                           Span rroot,
-                          std::string lcolor = "",
-                          std::string rcolor = "") {
+                          ForegroundColor lcolor = "",
+                          ForegroundColor rcolor = "") {
             // draw left arm
             if (lroot.size) {
                 auto lroot_mid = lroot.offset + (lroot.size / 2);
-                bv.at(0, lroot_mid) = lcolor + "╭";
+                bv.at(0, lroot_mid) = {lcolor, "╭"};
                 for (std::size_t i = 1; i <= h; ++i) {
-                    bv.at(i, lroot_mid) = lcolor + "│" + RESET;
+                    bv.at(i, lroot_mid) = {lcolor, "│"};
                 }
                 for (auto i = lroot_mid + 1; i < root.offset; ++i) {
-                    bv.at(0, i) = "─";
+                    bv.at(0, i) = {lcolor, "─"};
                 }
-                // reset color for printing of root node
-                bv.at(0, root.offset - 1) += RESET;
             }
             // draw right arm
             if (rroot.size) {
                 auto rroot_mid = rroot.offset + ((rroot.size - 1) / 2);
-                bv.at(0, rroot_mid) = "╮" + RESET;
+                bv.at(0, rroot_mid) = {rcolor, "╮"};
                 for (std::size_t i = 1; i <= h; ++i) {
-                    bv.at(i, rroot_mid) = rcolor + "│" + RESET;
+                    bv.at(i, rroot_mid) = {rcolor, "│"};
                 }
                 for (auto i = root.end(); i < rroot_mid; ++i) {
-                    bv.at(0, i) = "─";
+                    bv.at(0, i) = {rcolor, "─"};
                 }
-                auto &s = bv.at(0, root.end());
-                s = rcolor + s;
             }
         }
 };
@@ -229,10 +291,10 @@ class WrappedTree {
         // content of data written to a stringstream
         std::string display;
         // color set for this node
-        std::string color;
+        ForegroundColor color;
         // colors set for left & right arms of this node
-        std::string lcolor;
-        std::string rcolor;
+        ForegroundColor lcolor;
+        ForegroundColor rcolor;
         // width of display of subtree rooted at this node, in terminal chars
         std::size_t width;
         // node height of subtree
@@ -254,9 +316,9 @@ class WrappedTree {
         const bool left_loops,
         const bool right_loops,
         std::string display,
-        std::string color,
-        std::string lcolor,
-        std::string rcolor,
+        ForegroundColor color,
+        ForegroundColor lcolor,
+        ForegroundColor rcolor,
         std::size_t width,
         std::size_t height,
         std::size_t offset,
@@ -331,9 +393,9 @@ class WrappedTree {
             left_loops,
             right_loops,
             display,
-            "",
-            left_loops ? LOOP_COLOR : "",
-            right_loops ? LOOP_COLOR : "",
+            DEFAULT,
+            left_loops ? LOOP_COLOR : DEFAULT,
+            right_loops ? LOOP_COLOR : DEFAULT,
             width,
             height,
             offset + lwidth,
@@ -366,11 +428,11 @@ class WrappedTree {
         Span self_span(lwidth, self_width);
         LinkDrawer::draw(bv, lroot, self_span, rroot, w.lcolor, w.rcolor);
 
-        bv.at(0, lwidth) = w.lcolor + "[" + RESET + w.color;
+        bv.at(0, lwidth) = {w.lcolor, '['};
         for (std::size_t i = 0; i < w.display.size(); ++i) {
-            bv.at(0, lwidth+1+i) = w.display[i];
+            bv.at(0, lwidth+1+i) = {w.color, w.display[i]};
         }
-        bv.at(0, lwidth+1+w.display.size()) = RESET + w.rcolor + "]" + RESET;
+        bv.at(0, lwidth+1+w.display.size()) = {w.rcolor, ']'};
 
         return {lwidth + self_width + rwidth, self_span};
     }
@@ -435,21 +497,18 @@ class WrappedTree {
         auto base_horiz_row = full_height - loops.size();
         // draw all arrows first to avoid overwriting them
         for (auto draw_info : draw_infos) {
-            bv.at(draw_info.end_row, draw_info.end_col) = LOOP_COLOR + "△" + RESET;
+            bv.at(draw_info.end_row, draw_info.end_col) = {LOOP_COLOR, "△"};
         }
-        std::size_t prev_min = 0;
+        std::size_t lowest_loop = 0;
         for (auto draw_info : draw_infos) {
             auto [start_row, start_col, end_row, end_col, min_col, max_col] = draw_info;
             auto temp_horiz_row = base_horiz_row;
             auto max_row = std::max(start_row, end_row + 1);
             bool clear = true;
-            while (
-                    //temp_horiz_row > prev_min && 
-                    temp_horiz_row >= max_row && clear
-                    ) {
+            while (temp_horiz_row >= max_row && clear) {
                 --temp_horiz_row;
                 for (auto c = min_col; c <= max_col; ++c) {
-                    if (bv.at(temp_horiz_row, c) != " ") {
+                    if (!(bv.at(temp_horiz_row, c).c == " ")) {
                         clear = false;
                         break;
                     }
@@ -457,63 +516,51 @@ class WrappedTree {
             }
             ++temp_horiz_row;
             const auto horiz_row = temp_horiz_row;
-            prev_min = horiz_row;
+            lowest_loop = std::max(lowest_loop, horiz_row);
             for (auto r = start_row; r < horiz_row; ++r) {
-                auto & x = bv.at(r, start_col);
-                if (x == " ") {
-                    x = LOOP_COLOR + "│" + RESET;
-                } else {
-                    x = "│";
-                }
+                bv.at(r, start_col) = {LOOP_COLOR, "│"};
             }
             for (auto c = min_col + 1; c < max_col; ++c) {
                 auto & x = bv.at(horiz_row, c);
-                if (x == " ") {
-                    x = "─";
+                if (x.c == " ") {
+                    x = {LOOP_COLOR, "─"};
                 }
             }
-            bv.at(horiz_row, min_col) = LOOP_COLOR + "└";
-            {
-                auto & x = bv.at(horiz_row, max_col);
-                if (x == " ") {
-                    x = "┘" + RESET;
-                } else {
-                    x = "┘";
-                }
-            }
+            bv.at(horiz_row, min_col) = {LOOP_COLOR, "└"};
+            bv.at(horiz_row, max_col) = {LOOP_COLOR, "┘"};
             for (auto r = horiz_row - 1; r > end_row; --r) {
                 auto & x = bv.at(r, end_col);
-                if (x == "┘" + RESET) {
-                    x = "┤" + RESET;
-                } else if (x == LOOP_COLOR + "└") {
-                    x = LOOP_COLOR + "├";
-                } else if (x == " ") {
-                    x = LOOP_COLOR + "│" + RESET;
-                } else if (x == "─") {
-                    x = "│";
+                if (x.c == "┘") {
+                    x = {LOOP_COLOR, "┤"};
+                } else if (x.c == "└") {
+                    x = {LOOP_COLOR, "├"};
+                } else if (x.c == " ") {
+                    x = {LOOP_COLOR, "│"};
+                } else if (x.c == "─") {
+                    x = {LOOP_COLOR, "│"};
                 }
             }
             base_horiz_row += 1;
         }
-        return std::max(full_height - loops.size() - 1, prev_min + 1);
+        return std::max(full_height - loops.size() - 1, lowest_loop + 1);
     }
 
     public:
         WrappedTree(const Node* n): root(n) {
-            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, false, false, "", "", "", "", 0, 0, 0, 0));
+            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, false, false, "", DEFAULT, DEFAULT, DEFAULT, 0, 0, 0, 0));
             wrap(n, nullptr, 0, 1);
         }
 
         template<class LinkDrawer = SimpleLineDrawer<1>>
-        StringBuff draw() const {
+        TermBuff draw() const {
             const Wrap &wroot = wrap_map.at(root);
-            StringBuff sb(LinkDrawer::calc_height(wroot.height) + loops.size() + 1, wroot.width);
+            TermBuff sb(LinkDrawer::calc_height(wroot.height) + loops.size() + 1, wroot.width);
             draw<LinkDrawer>(root, sb);
             auto height = draw_loops<LinkDrawer>(sb);
             sb.height = height;
             return sb;
         }
-        void color_node(const Node* n, std::string color) {
+        void color_node(const Node* n, ForegroundColor color) {
             wrap_map.at(n).color = color;
         }
         std::pair<WrappedTree, WrappedTree> compare_to(const WrappedTree &other) const {
