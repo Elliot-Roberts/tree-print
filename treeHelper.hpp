@@ -446,6 +446,7 @@ class WrappedTree {
             std::size_t end_col;
             std::size_t min_col;
             std::size_t max_col;
+            std::size_t bottom_row;
 
             LoopDrawInfo(
             std::size_t start_row,
@@ -453,14 +454,16 @@ class WrappedTree {
             std::size_t end_row,
             std::size_t end_col,
             std::size_t min_col,
-            std::size_t max_col
+            std::size_t max_col,
+            std::size_t bottom_row
             ):
             start_row(start_row),
             start_col(start_col),
             end_row(end_row),
             end_col(end_col),
             min_col(min_col),
-            max_col(max_col) {}
+            max_col(max_col),
+            bottom_row(bottom_row) {}
         };
         auto compute_loop = [&](std::tuple<const Node *, Branch, const Node *> loop) {
             auto [src, side, dst] = loop;
@@ -483,7 +486,8 @@ class WrappedTree {
                     end_row,
                     end_col,
                     min_col,
-                    max_col
+                    max_col,
+                    0
                     );
         };
         std::vector<LoopDrawInfo> draw_infos;
@@ -494,38 +498,43 @@ class WrappedTree {
         std::sort(draw_infos.begin(), draw_infos.end(), [](auto a, auto b) {
                 return (a.max_col - a.min_col) < (b.max_col - b.min_col); });
         auto full_height = bv.height();
-        auto base_horiz_row = full_height - loops.size();
         // draw all arrows first to avoid overwriting them
         for (auto draw_info : draw_infos) {
             bv.at(draw_info.end_row, draw_info.end_col) = {LOOP_COLOR, "△"};
         }
         std::size_t lowest_loop = 0;
-        for (auto draw_info : draw_infos) {
-            auto [start_row, start_col, end_row, end_col, min_col, max_col] = draw_info;
-            auto temp_horiz_row = base_horiz_row;
+        for (auto & draw_info : draw_infos) {
+            auto & [start_row, start_col, end_row, end_col, min_col, max_col, bottom_row] = draw_info;
             auto max_row = std::max(start_row, end_row + 1);
-            bool clear = true;
-            while (temp_horiz_row >= max_row && clear) {
-                --temp_horiz_row;
+            auto first_clear_row = max_row;
+            while (true) {
+                bool clear = true;
                 for (auto c = min_col; c <= max_col; ++c) {
-                    if (!(bv.at(temp_horiz_row, c).c == " ")) {
+                    if (!(bv.at(first_clear_row, c).c == " ")) {
                         clear = false;
                         break;
                     }
                 }
+                if (clear) {
+                    break;
+                } else {
+                    ++first_clear_row;
+                }
             }
-            ++temp_horiz_row;
-            const auto horiz_row = temp_horiz_row;
-            lowest_loop = std::max(lowest_loop, horiz_row);
-            for (auto r = start_row; r < horiz_row; ++r) {
+            bottom_row = first_clear_row;
+            bv.at(bottom_row, min_col) = {LOOP_COLOR, "└"};
+            bv.at(bottom_row, max_col) = {LOOP_COLOR, "┘"};
+            for (auto c = min_col + 1; c < max_col; ++c) {
+                bv.at(first_clear_row, c) = {LOOP_COLOR, "─"};
+            }
+            lowest_loop = std::max(lowest_loop, first_clear_row);
+        }
+        for (auto draw_info : draw_infos) {
+            auto [start_row, start_col, end_row, end_col, min_col, max_col, bottom_row] = draw_info;
+            for (auto r = start_row; r < bottom_row; ++r) {
                 bv.at(r, start_col) = {LOOP_COLOR, "│"};
             }
-            for (auto c = min_col + 1; c < max_col; ++c) {
-                bv.at(horiz_row, c) = {LOOP_COLOR, "─"};
-            }
-            bv.at(horiz_row, min_col) = {LOOP_COLOR, "└"};
-            bv.at(horiz_row, max_col) = {LOOP_COLOR, "┘"};
-            for (auto r = horiz_row - 1; r > end_row; --r) {
+            for (auto r = bottom_row - 1; r > end_row; --r) {
                 auto & x = bv.at(r, end_col);
                 if (x.c == "┘") {
                     x = {LOOP_COLOR, "┤"};
@@ -537,7 +546,6 @@ class WrappedTree {
                     x = {LOOP_COLOR, "│"};
                 }
             }
-            base_horiz_row += 1;
         }
         return std::max(full_height - loops.size() - 1, lowest_loop + 1);
     }
