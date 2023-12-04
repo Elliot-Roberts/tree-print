@@ -521,10 +521,7 @@ class WrappedTree {
                 bv.at(r, start_col) = {LOOP_COLOR, "│"};
             }
             for (auto c = min_col + 1; c < max_col; ++c) {
-                auto & x = bv.at(horiz_row, c);
-                if (x.c == " ") {
-                    x = {LOOP_COLOR, "─"};
-                }
+                bv.at(horiz_row, c) = {LOOP_COLOR, "─"};
             }
             bv.at(horiz_row, min_col) = {LOOP_COLOR, "└"};
             bv.at(horiz_row, max_col) = {LOOP_COLOR, "┘"};
