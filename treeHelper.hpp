@@ -34,13 +34,22 @@ std::ostream & operator<<(std::ostream & os, ForegroundColor c) {
 const std::size_t HSPACING = 1;
 const std::size_t VSPACING = 0;
 
-const std::string LEFT_SURROUND = "(";
-const std::string RIGHT_SURROUND = ")";
+// const char LEFT_SURROUND[]  = "╴";
+// const char RIGHT_SURROUND[] = "╶";
+// const char DOWN_LEFT_SURROUND[] = "╷";
+// const char DOWN_RIGHT_SURROUND[] = "╷";
+const char LEFT_SURROUND[]  = "─";
+const char RIGHT_SURROUND[] = "─";
+const char DOWN_LEFT_SURROUND[] = "┌";
+const char DOWN_RIGHT_SURROUND[] = "┐";
+const std::size_t SURROUND_SIZE = 1;
 
 const ForegroundColor DELETE_COLOR = GREY;
 const ForegroundColor ADD_COLOR = GREEN;
 const ForegroundColor CHANGE_COLOR = BLUE;
 const ForegroundColor LOOP_COLOR = RED;
+const ForegroundColor DEFAULT_ARM_COLOR = GREY;
+const ForegroundColor DEFAULT_CONTENT_COLOR = DEFAULT;
 
 template<std::size_t WIDTH>
 struct TinyStr {
@@ -272,16 +281,19 @@ struct TreeWidth {
         return {node_count + other.node_count, displays_sum + other.displays_sum};
     }
 
+    /// Width of tree in chars when displayed
     std::size_t display_width(std::size_t spacing) const {
-        return node_count ? LEFT_SURROUND.size() + displays_sum + spacing * (node_count - 1) + RIGHT_SURROUND.size() : 0;
+        return node_count ? displays_sum + spacing * (node_count - 1) : 0;
     }
 
+    /// Given this TreeWidth on the left, where should content be printed
     std::size_t content_offset(std::size_t spacing) const {
-        return LEFT_SURROUND.size() + displays_sum + spacing * node_count;
+        return displays_sum + spacing * node_count;
     }
 
+    /// Given this TreeWidth on the left, where should the left surround be printed
     std::size_t surround_offset(std::size_t spacing) const {
-        return node_count ? LEFT_SURROUND.size() + displays_sum + spacing * node_count - RIGHT_SURROUND.size() : 0;
+        return node_count ? displays_sum + spacing * node_count - SURROUND_SIZE : 0;
     }
 };
 
@@ -393,9 +405,9 @@ class WrappedTree {
             left_loops,
             right_loops,
             display,
-            DEFAULT,
-            left_loops ? LOOP_COLOR : DEFAULT,
-            right_loops ? LOOP_COLOR : DEFAULT,
+            DEFAULT_CONTENT_COLOR,
+            left_loops ? LOOP_COLOR : DEFAULT_ARM_COLOR,
+            right_loops ? LOOP_COLOR : DEFAULT_ARM_COLOR,
             subtree_width,
             height,
             offset + lwidth,
@@ -405,43 +417,50 @@ class WrappedTree {
     };
 
     template<class LinkDrawer>
-    std::pair<TreeWidth, Span> draw(const Node* n, BuffView bv) const {
-        if (n == nullptr) return {{0, 0}, Span(0, 0)};
+    Span draw(const Node* n, BuffView bv) const {
+        if (n == nullptr) return Span(0, 0);
         Wrap w = wrap_map.at(n);
 
-        TreeWidth lwidth {0, 0};
         Span lroot(0, 0);
         if (!w.left_loops) {
-            std::tie(lwidth, lroot) = draw<LinkDrawer>(w.left, bv.offset(LinkDrawer::row_inc, 0));
+            lroot = draw<LinkDrawer>(w.left, bv.offset(LinkDrawer::row_inc, 0));
         }
 
-        std::size_t rstart = (lwidth + TreeWidth {1, w.display.size()}).surround_offset(HSPACING);
-
-        TreeWidth rwidth {0, 0};
         Span rroot(0, 0);
         if (!w.right_loops) {
-            std::tie(rwidth, rroot) = draw<LinkDrawer>(w.right, bv.offset(LinkDrawer::row_inc, rstart));
+            rroot = draw<LinkDrawer>(w.right, bv.offset(LinkDrawer::row_inc, 0));
         }
 
-        std::size_t left_surround_offset = lwidth.surround_offset(HSPACING);
+        std::size_t content_offset = w.offset.content_offset(HSPACING);
+        Span surrounded_span(content_offset, w.display.size());
 
-        rroot.offset += rstart;
-        Span self_span(left_surround_offset, LEFT_SURROUND.size() + w.display.size() + RIGHT_SURROUND.size());
-        LinkDrawer::draw(bv, lroot, self_span, rroot, w.lcolor, w.rcolor);
-
-        for (std::size_t i = 0; i < LEFT_SURROUND.size(); ++i) {
-            bv.at(0, left_surround_offset+i) = {w.lcolor, LEFT_SURROUND[i]};
+        std::size_t left_surround_offset = w.offset.surround_offset(HSPACING);
+        if (w.left != nullptr) {
+            surrounded_span.offset = left_surround_offset;
+            surrounded_span.size += SURROUND_SIZE;
+            if (w.left_loops) {
+                bv.at(0, left_surround_offset) = {w.lcolor, DOWN_LEFT_SURROUND};
+            } else {
+                bv.at(0, left_surround_offset) = {w.lcolor, LEFT_SURROUND};
+            }
         }
-        std::size_t content_offset = left_surround_offset + LEFT_SURROUND.size();
         for (std::size_t i = 0; i < w.display.size(); ++i) {
             bv.at(0, content_offset+i) = {w.color, w.display[i]};
         }
         std::size_t right_surround_offset = content_offset + w.display.size();
-        for (std::size_t i = 0; i < RIGHT_SURROUND.size(); ++i) {
-            bv.at(0, right_surround_offset+i) = {w.rcolor, RIGHT_SURROUND[i]};
+        if (w.right != nullptr) {
+            surrounded_span.size += SURROUND_SIZE;
+            if (w.right_loops) {
+                bv.at(0, right_surround_offset) = {w.rcolor, DOWN_RIGHT_SURROUND};
+            } else {
+                bv.at(0, right_surround_offset) = {w.rcolor, RIGHT_SURROUND};
+            }
         }
 
-        return {w.width, self_span};
+        Span content_span(content_offset, w.display.size());
+        LinkDrawer::draw(bv, lroot, surrounded_span, rroot, w.lcolor, w.rcolor);
+
+        return content_span;
     }
 
     template<class LinkDrawer>
@@ -544,7 +563,7 @@ class WrappedTree {
 
     public:
         WrappedTree(const Node* n): root(n) {
-            wrap_map.emplace(nullptr, Wrap{nullptr, nullptr, nullptr, nullptr, false, false, "", DEFAULT, DEFAULT, DEFAULT, {0, 0}, 0, {0, 0}, 0});
+            wrap_map.emplace(nullptr, Wrap{nullptr, nullptr, nullptr, nullptr, false, false, "", DEFAULT_CONTENT_COLOR, DEFAULT_ARM_COLOR, DEFAULT_ARM_COLOR, {0, 0}, 0, {0, 0}, 0});
             wrap(n, nullptr, {0, 0}, 1);
         }
 
