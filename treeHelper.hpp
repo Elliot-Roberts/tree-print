@@ -31,6 +31,12 @@ std::ostream & operator<<(std::ostream & os, ForegroundColor c) {
     return os;
 }
 
+const std::size_t HSPACING = 1;
+const std::size_t VSPACING = 0;
+
+const std::string LEFT_SURROUND = "(";
+const std::string RIGHT_SURROUND = ")";
+
 const ForegroundColor DELETE_COLOR = GREY;
 const ForegroundColor ADD_COLOR = GREEN;
 const ForegroundColor CHANGE_COLOR = BLUE;
@@ -82,13 +88,6 @@ struct TermCell {
     TermCell(ForegroundColor color, const char (&c)[N]): color(color), c(c) {}
 };
 
-/**
- * String Buffer: a 2D array of "characters".
- * Each "character" displays as one character in a terminal, but internally
- * they are each stored in their own `std::string` instead of a `char`, 
- * because they may have attached terminal escape sequences for color, and
- * may also be unicode symbols wider than one byte.
- */
 class TermBuff {
     public:
         std::size_t height;
@@ -136,7 +135,7 @@ class TermBuff {
 };
 
 /**
- * Create a new string buffer containing the contents of two other buffers
+ * Create a new terminal buffer containing the contents of two other buffers
  * pasted next to eachother, with variable spacing between.
  */
 TermBuff horizontal_concat(const TermBuff &left,
@@ -151,7 +150,7 @@ TermBuff horizontal_concat(const TermBuff &left,
 }
 
 /**
- * Buffer view: a non-owning "view" of a portion of a string buffer, 
+ * Buffer view: a non-owning "view" of a portion of a terminal buffer, 
  * starting at an offset.
  */
 class BuffView {
@@ -193,11 +192,10 @@ struct Span {
  * Draws the lines of the arms of a binary tree. `h` is the extra lines of
  * height drawn.
  */
-template<std::size_t h = 1>
 class SimpleLineDrawer {
     public:
         /// The number of rows 'total display height' increases per unit of tree height
-        static const std::size_t row_inc = 1 + h;
+        static const std::size_t row_inc = 1 + VSPACING;
         /// Calculate total display height from height of tree.
         static std::size_t calc_height(std::size_t nodes) {
             return 1 + row_inc * (nodes - 1);
@@ -236,13 +234,13 @@ class SimpleLineDrawer {
                           Span lroot,
                           Span root,
                           Span rroot,
-                          ForegroundColor lcolor = "",
-                          ForegroundColor rcolor = "") {
+                          ForegroundColor lcolor,
+                          ForegroundColor rcolor) {
             // draw left arm
             if (lroot.size) {
                 auto lroot_mid = lroot.offset + (lroot.size / 2);
                 bv.at(0, lroot_mid) = {lcolor, "╭"};
-                for (std::size_t i = 1; i <= h; ++i) {
+                for (std::size_t i = 1; i <= VSPACING; ++i) {
                     bv.at(i, lroot_mid) = {lcolor, "│"};
                 }
                 for (auto i = lroot_mid + 1; i < root.offset; ++i) {
@@ -253,7 +251,7 @@ class SimpleLineDrawer {
             if (rroot.size) {
                 auto rroot_mid = rroot.offset + ((rroot.size - 1) / 2);
                 bv.at(0, rroot_mid) = {rcolor, "╮"};
-                for (std::size_t i = 1; i <= h; ++i) {
+                for (std::size_t i = 1; i <= VSPACING; ++i) {
                     bv.at(i, rroot_mid) = {rcolor, "│"};
                 }
                 for (auto i = root.end(); i < rroot_mid; ++i) {
@@ -261,6 +259,30 @@ class SimpleLineDrawer {
                 }
             }
         }
+};
+
+/**
+ * Width of some number of in-order nodes in a tree
+ */
+struct TreeWidth {
+    std::size_t node_count;
+    std::size_t displays_sum;
+
+    TreeWidth operator+(const TreeWidth & other) const {
+        return {node_count + other.node_count, displays_sum + other.displays_sum};
+    }
+
+    std::size_t display_width(std::size_t spacing) const {
+        return node_count ? LEFT_SURROUND.size() + displays_sum + spacing * (node_count - 1) + RIGHT_SURROUND.size() : 0;
+    }
+
+    std::size_t content_offset(std::size_t spacing) const {
+        return LEFT_SURROUND.size() + displays_sum + spacing * node_count;
+    }
+
+    std::size_t surround_offset(std::size_t spacing) const {
+        return node_count ? LEFT_SURROUND.size() + displays_sum + spacing * node_count - RIGHT_SURROUND.size() : 0;
+    }
 };
 
 /**
@@ -296,39 +318,16 @@ class WrappedTree {
         ForegroundColor lcolor;
         ForegroundColor rcolor;
         // width of display of subtree rooted at this node, in terminal chars
-        std::size_t width;
+        TreeWidth width;
         // node height of subtree
         std::size_t height;
-        // number of terminal chars from the left this node will be printed
-        std::size_t offset;
+        // offset from the beginning of the tree
+        TreeWidth offset;
         // rank of node in tree
         std::size_t rank;
         
         // must always specify fields
         Wrap() = delete;
-
-        // convenience initializer for all fields
-        Wrap(
-        const Node* n,
-        const Node* parent,
-        const Node* left,
-        const Node* right,
-        const bool left_loops,
-        const bool right_loops,
-        std::string display,
-        ForegroundColor color,
-        ForegroundColor lcolor,
-        ForegroundColor rcolor,
-        std::size_t width,
-        std::size_t height,
-        std::size_t offset,
-        std::size_t rank
-        ):
-        n(n), parent(parent), left(left), right(right), 
-        left_loops(left_loops), right_loops(right_loops),
-        display(display /* boyfriend residue */), 
-        color(color), lcolor(lcolor), rcolor(rcolor), width(width),
-        height(height), offset(offset), rank(rank) {}
     };
     // store of wrapped nodes for each original node pointer
     std::unordered_map<const Node*, Wrap> wrap_map;
@@ -344,15 +343,16 @@ class WrappedTree {
     // original tree root
     const Node* root;
     // record a node in the tree
-    std::optional<std::pair<std::size_t, std::size_t>> wrap(const Node* n, const Node* parent, std::size_t offset, std::size_t rank) {
+    std::optional<std::pair<TreeWidth, std::size_t>> 
+    wrap(const Node* n, const Node* parent, TreeWidth offset, std::size_t rank) {
         if (!visited.insert(n).second) return {};
 
         std::stringstream ss;
         ss << n->data;
         std::string display = ss.str();
-        std::size_t self_width = display.size() + 2;
+        TreeWidth self_width {1, display.size()};
 
-        std::size_t lwidth = 0;
+        TreeWidth lwidth {0, 0};
         std::size_t lheight = 0;
         bool left_loops = false;
         if (n->left) {
@@ -367,7 +367,7 @@ class WrappedTree {
             }
         }
 
-        std::size_t rwidth = 0;
+        TreeWidth rwidth {0, 0};
         std::size_t rheight = 0;
         bool right_loops = false;
         if (n->right) {
@@ -382,10 +382,10 @@ class WrappedTree {
             }
         }
 
-        std::size_t width = self_width + lwidth + rwidth;
+        TreeWidth subtree_width = self_width + lwidth + rwidth;
         std::size_t height = 1 + std::max(lheight, rheight);
 
-        wrap_map.emplace(n, Wrap(
+        wrap_map.emplace(n, Wrap{
             n, 
             parent,
             n->left,
@@ -396,45 +396,52 @@ class WrappedTree {
             DEFAULT,
             left_loops ? LOOP_COLOR : DEFAULT,
             right_loops ? LOOP_COLOR : DEFAULT,
-            width,
+            subtree_width,
             height,
             offset + lwidth,
             rank
-        ));
-        return {{width, height}};
+            });
+        return {{subtree_width, height}};
     };
 
     template<class LinkDrawer>
-    std::pair<std::size_t, Span> draw(const Node* n, BuffView bv) const {
-        if (n == nullptr) return {0, Span(0, 0)};
+    std::pair<TreeWidth, Span> draw(const Node* n, BuffView bv) const {
+        if (n == nullptr) return {{0, 0}, Span(0, 0)};
         Wrap w = wrap_map.at(n);
-        std::size_t self_width = w.display.size() + 2;
 
-        std::size_t lwidth = 0;
+        TreeWidth lwidth {0, 0};
         Span lroot(0, 0);
         if (!w.left_loops) {
             std::tie(lwidth, lroot) = draw<LinkDrawer>(w.left, bv.offset(LinkDrawer::row_inc, 0));
         }
 
-        std::size_t rstart = lwidth + self_width;
+        std::size_t rstart = (lwidth + TreeWidth {1, w.display.size()}).surround_offset(HSPACING);
 
-        std::size_t rwidth = 0;
+        TreeWidth rwidth {0, 0};
         Span rroot(0, 0);
         if (!w.right_loops) {
             std::tie(rwidth, rroot) = draw<LinkDrawer>(w.right, bv.offset(LinkDrawer::row_inc, rstart));
         }
 
+        std::size_t left_surround_offset = lwidth.surround_offset(HSPACING);
+
         rroot.offset += rstart;
-        Span self_span(lwidth, self_width);
+        Span self_span(left_surround_offset, LEFT_SURROUND.size() + w.display.size() + RIGHT_SURROUND.size());
         LinkDrawer::draw(bv, lroot, self_span, rroot, w.lcolor, w.rcolor);
 
-        bv.at(0, lwidth) = {w.lcolor, '['};
-        for (std::size_t i = 0; i < w.display.size(); ++i) {
-            bv.at(0, lwidth+1+i) = {w.color, w.display[i]};
+        for (std::size_t i = 0; i < LEFT_SURROUND.size(); ++i) {
+            bv.at(0, left_surround_offset+i) = {w.lcolor, LEFT_SURROUND[i]};
         }
-        bv.at(0, lwidth+1+w.display.size()) = {w.rcolor, ']'};
+        std::size_t content_offset = left_surround_offset + LEFT_SURROUND.size();
+        for (std::size_t i = 0; i < w.display.size(); ++i) {
+            bv.at(0, content_offset+i) = {w.color, w.display[i]};
+        }
+        std::size_t right_surround_offset = content_offset + w.display.size();
+        for (std::size_t i = 0; i < RIGHT_SURROUND.size(); ++i) {
+            bv.at(0, right_surround_offset+i) = {w.rcolor, RIGHT_SURROUND[i]};
+        }
 
-        return {lwidth + self_width + rwidth, self_span};
+        return {w.width, self_span};
     }
 
     template<class LinkDrawer>
@@ -447,23 +454,6 @@ class WrappedTree {
             std::size_t min_col;
             std::size_t max_col;
             std::size_t bottom_row;
-
-            LoopDrawInfo(
-            std::size_t start_row,
-            std::size_t start_col,
-            std::size_t end_row,
-            std::size_t end_col,
-            std::size_t min_col,
-            std::size_t max_col,
-            std::size_t bottom_row
-            ):
-            start_row(start_row),
-            start_col(start_col),
-            end_row(end_row),
-            end_col(end_col),
-            min_col(min_col),
-            max_col(max_col),
-            bottom_row(bottom_row) {}
         };
         auto compute_loop = [&](std::tuple<const Node *, Branch, const Node *> loop) {
             auto [src, side, dst] = loop;
@@ -473,22 +463,24 @@ class WrappedTree {
             auto dst_rank = wdst.rank;
             auto start_row = LinkDrawer::calc_height(src_rank);
             auto end_row = LinkDrawer::calc_height(dst_rank);
-            auto start_col = wsrc.offset;
-            auto end_col = wdst.offset + (wdst.display.size() + 2) / 2;
-            if (side == RIGHT) {
-                start_col += wsrc.display.size() + 1;
+            std::size_t start_col;
+            if (side == LEFT) {
+                start_col = wsrc.offset.content_offset(HSPACING) - 1;
+            } else {
+                start_col = wsrc.offset.content_offset(HSPACING) + wsrc.display.size();
             }
+            auto end_col = wdst.offset.content_offset(HSPACING) + wdst.display.size() / 2;
             auto min_col = std::min(start_col, end_col);
             auto max_col = std::max(start_col, end_col);
-            return LoopDrawInfo(
-                    start_row,
-                    start_col,
-                    end_row,
-                    end_col,
-                    min_col,
-                    max_col,
-                    0
-                    );
+            return LoopDrawInfo{
+                start_row,
+                start_col,
+                end_row,
+                end_col,
+                min_col,
+                max_col,
+                0
+            };
         };
         std::vector<LoopDrawInfo> draw_infos;
         draw_infos.reserve(loops.size());
@@ -552,14 +544,14 @@ class WrappedTree {
 
     public:
         WrappedTree(const Node* n): root(n) {
-            wrap_map.emplace(nullptr, Wrap(nullptr, nullptr, nullptr, nullptr, false, false, "", DEFAULT, DEFAULT, DEFAULT, 0, 0, 0, 0));
-            wrap(n, nullptr, 0, 1);
+            wrap_map.emplace(nullptr, Wrap{nullptr, nullptr, nullptr, nullptr, false, false, "", DEFAULT, DEFAULT, DEFAULT, {0, 0}, 0, {0, 0}, 0});
+            wrap(n, nullptr, {0, 0}, 1);
         }
 
-        template<class LinkDrawer = SimpleLineDrawer<1>>
+        template<class LinkDrawer = SimpleLineDrawer>
         TermBuff draw() const {
             const Wrap &wroot = wrap_map.at(root);
-            TermBuff sb(LinkDrawer::calc_height(wroot.height) + loops.size() + 1, wroot.width);
+            TermBuff sb(LinkDrawer::calc_height(wroot.height) + loops.size() + 1, wroot.width.display_width(HSPACING));
             draw<LinkDrawer>(root, sb);
             auto height = draw_loops<LinkDrawer>(sb);
             sb.height = height;

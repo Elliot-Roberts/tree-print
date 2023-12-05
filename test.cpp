@@ -58,8 +58,8 @@ Node * random_node(Node * n) {
 }
 
 int main() {
-    auto root = rand_gen(10, 7);
-    cube(root);
+    auto root = rand_gen(20, 7);
+    //cube(root);
     for (int i = 0; i < 5; ++i) {
         random_null(root) = random_node(root);
     }
