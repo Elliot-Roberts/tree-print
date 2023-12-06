@@ -437,17 +437,6 @@ class WrappedTree {
         TreeWidth subtree_width = lwidth + self_width + rwidth;
         std::size_t height = 1 + std::max(lheight, rheight);
 
-        /*
-        ForegroundColor debug_color = DEFAULT_CONTENT_COLOR;
-        if (subtree_width.loop_on_left && subtree_width.loop_on_right) {
-            debug_color = GREEN;
-        } else if (subtree_width.loop_on_left) {
-            debug_color = RED;
-        } else if (subtree_width.loop_on_right) {
-            debug_color = BLUE;
-        }
-        */
-
         wrap_map.emplace(n, Wrap{
             n, 
             parent,
@@ -499,7 +488,6 @@ class WrappedTree {
                     && right.width.loop_on_left
                     && ((w.content.size() - 1) / 2 < padding)) {
                 this_overlaps += 1;
-                if (left_pokes) w.color = BLUE;
             }
             right_overlaps = compute_overlaps(right, offset + left_overlaps + this_overlaps, padding);
         }
