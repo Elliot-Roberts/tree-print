@@ -31,7 +31,7 @@ std::ostream & operator<<(std::ostream & os, ForegroundColor c) {
     return os;
 }
 
-const std::size_t HSPACING = 1;
+const std::size_t HSPACING = 0;
 const std::size_t VSPACING = 0;
 
 // const char LEFT_SURROUND[]  = "╴";
