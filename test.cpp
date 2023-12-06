@@ -58,11 +58,11 @@ Node * random_node(Node * n) {
 }
 
 int main() {
-    auto root = rand_gen(20, 7);
-    //cube(root);
-    // for (int i = 0; i < 5; ++i) {
-    //     random_null(root) = random_node(root);
-    // }
+    auto root = rand_gen(10, 1);
+    // cube(root);
+    for (int i = 0; i < 5; ++i) {
+        random_null(root) = random_node(root);
+    }
     WrappedTree<Node> wt(root);
     cout << wt;
     // auto & n = find(root, 7);
